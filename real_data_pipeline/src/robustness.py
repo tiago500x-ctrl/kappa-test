@@ -41,7 +41,7 @@ def _bootstrap_task(args):
         c["background_pred"]: _W["b"][idx], "plasma_column_scaled": _W["C"][idx],
     })
     try:
-        r, _, _ = fit_model(df, c, cfg)
+        r, _, _ = fit_model(df, c, cfg, compute_ci=False)
         return {"replicate": i, "kappa_hat": r["kappa_hat"], "TS": r["TS"]}
     except RuntimeError:
         return {"replicate": i, "kappa_hat": np.nan, "TS": np.nan}
@@ -73,7 +73,7 @@ def _null_task(args):
         c["background_pred"]: _W["b"], "plasma_column_scaled": _W["C"],
     })
     try:
-        r, _, _ = fit_model(df, c, cfg)
+        r, _, _ = fit_model(df, c, cfg, compute_ci=False)
         return {"replicate": i, "TS": r["TS"], "kappa_hat": r["kappa_hat"]}
     except RuntimeError:
         return {"replicate": i, "TS": np.nan, "kappa_hat": np.nan}
