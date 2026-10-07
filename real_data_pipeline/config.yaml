@@ -35,3 +35,4 @@ model:
   null_simulations: 1000
   random_seed: 42
   energy_bins_tev: [10, 100, 1000, 1000000]
+  n_jobs: null  # null = usa (numero de nucleos - 1); processos paralelos para bootstrap/calibracao nula

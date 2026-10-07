@@ -6,3 +6,4 @@ requests>=2.31
 PyYAML>=6.0
 astropy>=5.3
 pytest>=7.4
+threadpoolctl>=3.1
