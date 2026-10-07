@@ -1,0 +1,37 @@
+paths:
+  icecube_raw: data/raw/icecube.csv
+  plasma_raw: data/raw/plasma.csv
+  merged: data/processed/merged.csv
+  results: outputs/results.json
+  profile_plot: outputs/profile_likelihood.png
+  bootstrap_csv: outputs/bootstrap_kappa.csv
+  null_csv: outputs/null_calibration.csv
+sources:
+  icecube_url: "REPLACE_WITH_PUBLIC_DIRECT_CSV_URL"
+  plasma_url: "REPLACE_WITH_PUBLIC_DIRECT_CSV_URL"
+columns:
+  icecube:
+    ra: ra_deg
+    dec: dec_deg
+    redshift: redshift
+    energy: energy_tev
+    counts_obs: counts_obs
+    signal_pred: counts_signal_pred
+    background_pred: counts_background_pred
+  plasma:
+    ra: ra_deg
+    dec: dec_deg
+    redshift: redshift
+    dm: dm_pc_cm3
+matching:
+  max_radius_deg: 2.0
+  max_redshift_difference: 0.15
+  require_plasma_behind_source: false
+model:
+  kappa_max: 2.0
+  efficiency_uncertainty: 0.10
+  plasma_scale_uncertainty: 0.20
+  bootstrap_samples: 500
+  null_simulations: 1000
+  random_seed: 42
+  energy_bins_tev: [10, 100, 1000, 1000000]
