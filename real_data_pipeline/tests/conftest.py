@@ -1,25 +1,25 @@
+"""
+Fixtures compartilhadas por toda a suíte de testes.
+
+Compatível com:
+- src/inference.py
+- src/robustness.py
+- src/crossmatch.py
+
+Objetivos:
+1. Eliminar duplicação de generate_dataset().
+2. Centralizar colunas e configurações.
+3. Fornecer datasets padrão: H0 (kappa=0), sinal fraco/moderado/forte.
+4. Fornecer catálogos mínimos para crossmatch (compatível e incompatível em redshift).
+"""
+
 import numpy as np
 import pandas as pd
 import pytest
 
 
 # ============================================================
-# Mapeamento real usado pela inference.py
-# ============================================================
-
-@pytest.fixture(scope="session")
-def inference_columns():
-    return {
-        "counts_obs": "N",
-        "signal_pred": "s",
-        "background_pred": "b",
-        "energy": "E",
-        "dec": "dec",
-    }
-
-
-# ============================================================
-# Config padrão da v2
+# Configuração usada pelo fit_model()
 # ============================================================
 
 @pytest.fixture(scope="session")
@@ -36,7 +36,55 @@ def inference_config():
 
 
 # ============================================================
-# Gerador sintético padrão
+# Mapeamento de colunas usado pela inference.py
+# ============================================================
+
+@pytest.fixture(scope="session")
+def inference_columns():
+    return {
+        "counts_obs": "N",
+        "signal_pred": "s",
+        "background_pred": "b",
+        "energy": "E",
+        "dec": "dec",
+    }
+
+
+# ============================================================
+# Mapeamento usado pelo crossmatch.py
+# ============================================================
+
+@pytest.fixture(scope="session")
+def crossmatch_columns():
+    ci = {
+        "ra": "ra",
+        "dec": "dec",
+        "redshift": "z",
+        "energy": "E",
+        "counts_obs": "N",
+        "signal_pred": "s",
+        "background_pred": "b",
+    }
+    cp = {
+        "ra": "ra",
+        "dec": "dec",
+        "redshift": "z",
+        "dm": "dm",
+    }
+    return ci, cp
+
+
+# ============================================================
+# RNG compartilhado
+# ============================================================
+
+@pytest.fixture
+def rng():
+    return np.random.default_rng(42)
+
+
+# ============================================================
+# Gerador sintético principal
 # ============================================================
 
 def generate_dataset(kappa, seed, n_events=500, signal=8.0, background=1.0):
@@ -66,16 +114,26 @@ def null_dataset():
 
 
 # ============================================================
-# Dataset com sinal injetado
+# Dataset com sinal fraco / moderado / forte
 # ============================================================
+
+@pytest.fixture
+def weak_signal_dataset():
+    return generate_dataset(kappa=0.02, seed=12345, n_events=500)
+
 
 @pytest.fixture
 def injected_dataset():
     return generate_dataset(kappa=0.08, seed=12345, n_events=500)
 
 
+@pytest.fixture
+def strong_signal_dataset():
+    return generate_dataset(kappa=0.15, seed=12345, n_events=500)
+
+
 # ============================================================
-# Catálogo mínimo para crossmatch
+# Catálogo IceCube mínimo
 # ============================================================
 
 @pytest.fixture
@@ -91,6 +149,10 @@ def mock_icecube_catalog():
     })
 
 
+# ============================================================
+# Catálogo plasma compatível / incompatível em redshift
+# ============================================================
+
 @pytest.fixture
 def mock_plasma_catalog():
     return pd.DataFrame({
@@ -101,25 +163,20 @@ def mock_plasma_catalog():
     })
 
 
+@pytest.fixture
+def mismatched_plasma_catalog():
+    return pd.DataFrame({
+        "ra": [10.01],
+        "dec": [20.01],
+        "z": [2.0],
+        "dm": [250.0],
+    })
+
+
 # ============================================================
-# Mapeamentos usados por crossmatch.py
+# Helper para estudos de cobertura (dataset sob medida)
 # ============================================================
 
 @pytest.fixture
-def crossmatch_columns():
-    ci = {
-        "ra": "ra",
-        "dec": "dec",
-        "redshift": "z",
-        "energy": "E",
-        "counts_obs": "N",
-        "signal_pred": "s",
-        "background_pred": "b",
-    }
-    cp = {
-        "ra": "ra",
-        "dec": "dec",
-        "redshift": "z",
-        "dm": "dm",
-    }
-    return ci, cp
+def dataset_factory():
+    return generate_dataset

@@ -1,11 +1,10 @@
 import numpy as np
 
 from src.inference import fit_model
-from conftest import generate_dataset
 
 
-def test_recovers_injected_kappa(inference_columns, inference_config):
-    df = generate_dataset(kappa=0.08, seed=1, n_events=1500)
+def test_recovers_injected_kappa(inference_columns, inference_config, dataset_factory):
+    df = dataset_factory(kappa=0.08, seed=1, n_events=1500)
     out, _, _ = fit_model(df, inference_columns, inference_config)
     assert abs(out["kappa_hat"] - .08) < .03
     assert abs(out["significance_sigma_asymptotic"] - np.sqrt(out["TS"])) < 1e-12
