@@ -1,0 +1,145 @@
+{
+  "uniformity": {
+    "n_null": 2000,
+    "ks_statistic": 0.000500000000000056,
+    "ks_pvalue": 1.0,
+    "uniformity_pass": true,
+    "fpr": 0.0495,
+    "fpr_expected": 0.05,
+    "fpr_err": 0.004873397172404482,
+    "fpr_pass": true
+  },
+  "convergence": {
+    "rows": [
+      {
+        "nsim": 100,
+        "p_empirical": 0.009900990099009901,
+        "seconds": 9.447097063064575
+      },
+      {
+        "nsim": 300,
+        "p_empirical": 0.0033222591362126247,
+        "seconds": 20.839151620864868
+      },
+      {
+        "nsim": 1000,
+        "p_empirical": 0.000999000999000999,
+        "seconds": 52.977454662323
+      },
+      {
+        "nsim": 3000,
+        "p_empirical": 0.0003332222592469177,
+        "seconds": 154.6665382385254
+      }
+    ],
+    "convergence_pass": true
+  },
+  "seed_stability": {
+    "rows": [
+      {
+        "seed": 3000,
+        "p_empirical": 0.0004997501249375312,
+        "ts_mean": 0.4778303098448872,
+        "ts_std": 1.0769581464573172
+      },
+      {
+        "seed": 3017,
+        "p_empirical": 0.0004997501249375312,
+        "ts_mean": 0.5443532135351549,
+        "ts_std": 1.2255553588157801
+      },
+      {
+        "seed": 3034,
+        "p_empirical": 0.0004997501249375312,
+        "ts_mean": 0.4815994971549076,
+        "ts_std": 1.0902642031189749
+      },
+      {
+        "seed": 3051,
+        "p_empirical": 0.0004997501249375312,
+        "ts_mean": 0.4818601459759087,
+        "ts_std": 1.0823405257029761
+      },
+      {
+        "seed": 3068,
+        "p_empirical": 0.0004997501249375312,
+        "ts_mean": 0.4928317680474331,
+        "ts_std": 1.0589945734186355
+      }
+    ],
+    "p_std_across_seeds": 0.0,
+    "expected_se": 0.0004997501249375312,
+    "stability_pass": true
+  },
+  "independent_mc": {
+    "n_independent": 1000,
+    "n_parallel": 2000,
+    "ts_indep_mean": 0.5108808042842925,
+    "ts_parallel_mean": 0.5058271492539695,
+    "ks_statistic": 0.03300000000000003,
+    "ks_pvalue": 0.45908856619265104,
+    "consistent_pass": true
+  },
+  "coverage": {
+    "available": true,
+    "min_coverage": 0.9,
+    "rows": [
+      {
+        "kappa_true": 0.0,
+        "coverage_95": 0.945,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.01,
+        "coverage_95": 0.95,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.02,
+        "coverage_95": 0.95,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.03,
+        "coverage_95": 0.995,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.04,
+        "coverage_95": 0.995,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.05,
+        "coverage_95": 0.985,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.06,
+        "coverage_95": 1.0,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.07,
+        "coverage_95": 1.0,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.08,
+        "coverage_95": 1.0,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.09,
+        "coverage_95": 1.0,
+        "ok": true
+      },
+      {
+        "kappa_true": 0.1,
+        "coverage_95": 1.0,
+        "ok": true
+      }
+    ],
+    "coverage_pass": true
+  }
+}
