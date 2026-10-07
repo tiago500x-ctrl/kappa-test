@@ -1,0 +1,324 @@
+diff --git a/src/graphnet/models/components/edge_convolutions.py b/src/graphnet/models/components/edge_convolutions.py
+index 7823559..971b36f 100644
+--- a/src/graphnet/models/components/edge_convolutions.py
++++ b/src/graphnet/models/components/edge_convolutions.py
+@@ -7,7 +7,8 @@ import torch.nn as nn
+ from torch.functional import Tensor
+ from torch.nn.modules import TransformerEncoder, TransformerEncoderLayer
+ from torch_geometric.nn import EdgeConv
+-from torch_geometric.nn.pool import knn_graph
++from torch_geometric.nn.pool import knn_graph as _pyg_knn_graph
++import torch_geometric.typing as pyg_typing
+ from torch_geometric.typing import Adj, PairTensor
+ from torch_geometric.nn.conv import MessagePassing
+ from torch_geometric.nn.inits import reset
+@@ -15,6 +16,38 @@ from torch_geometric.utils import to_dense_batch
+ from pytorch_lightning import LightningModule
+ 
+ 
++def _brute_force_knn_graph(
++    x: Tensor, k: int, batch: Optional[Tensor] = None
++) -> Tensor:
++    """Fallback kNN (O(n^2), CPU/pure-PyTorch) para quando `pyg_lib` nao
++    esta disponivel (sem wheel para esta combinacao de torch/Python -- ver
++    issue #18 do kappa-test). So para avaliacao local, nao para producao."""
++    n = x.size(0)
++    if batch is None:
++        batch = x.new_zeros(n, dtype=torch.long)
++    src_list, tgt_list = [], []
++    for b in torch.unique(batch):
++        idx = (batch == b).nonzero(as_tuple=True)[0]
++        xb = x[idx]
++        m = xb.size(0)
++        kk = min(k, m - 1)
++        if kk <= 0:
++            continue
++        dist = torch.cdist(xb, xb)
++        dist.fill_diagonal_(float("inf"))
++        knn_idx = dist.topk(kk, largest=False).indices  # [m, kk]
++        src_list.append(idx[knn_idx.reshape(-1)])
++        tgt_list.append(idx.unsqueeze(1).expand(-1, kk).reshape(-1))
++    return torch.stack([torch.cat(src_list), torch.cat(tgt_list)], dim=0)
++
++
++def knn_graph(x: Tensor, k: int, batch: Optional[Tensor] = None) -> Tensor:
++    """`knn_graph` com fallback automatico se `pyg_lib` nao estiver instalado."""
++    if pyg_typing.WITH_KNN:
++        return _pyg_knn_graph(x=x, k=k, batch=batch)
++    return _brute_force_knn_graph(x, k, batch)
++
++
+ class DynEdgeConv(EdgeConv, LightningModule):
+     """Dynamical edge convolution layer."""
+ 
+diff --git a/src/graphnet/models/components/embedding.py b/src/graphnet/models/components/embedding.py
+index bc4cf9a..ecd3783 100644
+--- a/src/graphnet/models/components/embedding.py
++++ b/src/graphnet/models/components/embedding.py
+@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple, Union
+ from pytorch_lightning import LightningModule
+ from torch_geometric.utils import add_self_loops
+ from torch_geometric.data import Data
+-from torch_sparse import coalesce
++from torch_geometric.utils import coalesce
+ 
+ from graphnet.models.utils import full_edge_index
+ 
+@@ -584,9 +584,8 @@ class RRWPLinearEdgeEncoder(LightningModule):
+             out_idx, out_val = coalesce(
+                 torch.cat([edge_index, rrwp_idx], dim=1),
+                 torch.cat([edge_attr, rrwp_val], dim=0),
+-                data.num_nodes,
+-                data.num_nodes,
+-                op="add",
++                num_nodes=data.num_nodes,
++                reduce="sum",
+             )
+ 
+         if self.pad_to_full_graph:
+@@ -596,7 +595,7 @@ class RRWPLinearEdgeEncoder(LightningModule):
+             out_idx = torch.cat([out_idx, edge_index_full], dim=1)
+             out_val = torch.cat([out_val, edge_attr_pad], dim=0)
+             out_idx, out_val = coalesce(
+-                out_idx, out_val, data.num_nodes, data.num_nodes, op="add"
++                out_idx, out_val, num_nodes=data.num_nodes, reduce="sum"
+             )
+ 
+         if self.apply_norm:
+diff --git a/src/graphnet/models/components/grit_layers.py b/src/graphnet/models/components/grit_layers.py
+index 472e81a..1559497 100644
+--- a/src/graphnet/models/components/grit_layers.py
++++ b/src/graphnet/models/components/grit_layers.py
+@@ -6,7 +6,7 @@ from torch.functional import Tensor
+ from torch_geometric.data import Data
+ from torch_geometric.nn.pool import global_mean_pool, global_add_pool
+ from torch_geometric.utils import softmax, degree
+-from torch_scatter import scatter
++from torch_geometric.utils import scatter
+ from pytorch_lightning import LightningModule
+ 
+ 
+@@ -122,15 +122,17 @@ class GritSparseMHA(LightningModule):
+         V_x_weighted = (
+             V_x[data.edge_index[0]] * score
+         )  # (num relative) x num_heads x out_dim
+-        wV = torch.zeros_like(
+-            V_x, dtype=score.dtype
+-        )  # (num nodes in batch) x num_heads x out_dim
+-        scatter(V_x_weighted, data.edge_index[1], dim=0, out=wV, reduce="add")
++        # tg.utils.scatter nao tem parametro out=; dim_size preserva o shape
++        # que o tensor zerado (wV) garantia antes.
++        wV = scatter(
++            V_x_weighted, data.edge_index[1], dim=0,
++            dim_size=V_x.size(0), reduce="sum",
++        )
+ 
+         # Adds the second term (W_Ev ehhat_ij) in the last line of Eq. 2
+         if self.edge_enhance and E is not None:
+             rowV = scatter(
+-                e_t * score, data.edge_index[1], dim=0, reduce="add"
++                e_t * score, data.edge_index[1], dim=0, reduce="sum"
+             )
+             rowV = torch.einsum("nhd, dhc -> nhc", rowV, self.VeRow)
+             wV = wV + rowV
+diff --git a/src/graphnet/models/gnn/dynedge.py b/src/graphnet/models/gnn/dynedge.py
+index 995449e..a21e8da 100644
+--- a/src/graphnet/models/gnn/dynedge.py
++++ b/src/graphnet/models/gnn/dynedge.py
+@@ -5,17 +5,20 @@ from typing import List, Optional, Tuple, Union
+ import torch
+ from torch import Tensor, LongTensor
+ from torch_geometric.data import Data
+-from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_sum
++from torch_geometric.utils import scatter
+ 
+ from graphnet.models.components.edge_convolutions import DynEdgeConv
+ from graphnet.models.gnn.gnn import GNN
+ from graphnet.models.utils import calculate_xyzt_homophily
+ 
++# torch_scatter esta deprecado (sem wheel para versoes recentes de
++# torch/Python); torch_geometric.utils.scatter e o substituto nativo, usado
++# via reduce= em vez de uma funcao por operacao.
+ GLOBAL_POOLINGS = {
+-    "min": scatter_min,
+-    "max": scatter_max,
+-    "sum": scatter_sum,
+-    "mean": scatter_mean,
++    "min": "min",
++    "max": "max",
++    "sum": "sum",
++    "mean": "mean",
+ }
+ 
+ 
+@@ -254,12 +257,8 @@ class DynEdge(GNN):
+         assert self._global_pooling_schemes
+         pooled = []
+         for pooling_scheme in self._global_pooling_schemes:
+-            pooling_fn = GLOBAL_POOLINGS[pooling_scheme]
+-            pooled_x = pooling_fn(x, index=batch, dim=0)
+-            if isinstance(pooled_x, tuple) and len(pooled_x) == 2:
+-                # `scatter_{min,max}`, which return also an argument, vs.
+-                # `scatter_{mean,sum}`
+-                pooled_x, _ = pooled_x
++            reduce = GLOBAL_POOLINGS[pooling_scheme]
++            pooled_x = scatter(x, index=batch, dim=0, reduce=reduce)
+             pooled.append(pooled_x)
+ 
+         return torch.cat(pooled, dim=1)
+@@ -276,7 +275,7 @@ class DynEdge(GNN):
+         h_x, h_y, h_z, h_t = calculate_xyzt_homophily(x, edge_index, batch)
+ 
+         # Calculate mean features
+-        global_means = scatter_mean(x, batch, dim=0)
++        global_means = scatter(x, batch, dim=0, reduce="mean")
+ 
+         # Add global variables
+         global_variables = torch.cat(
+diff --git a/src/graphnet/models/gnn/dynedge_jinst.py b/src/graphnet/models/gnn/dynedge_jinst.py
+index f1a5f52..c51be56 100644
+--- a/src/graphnet/models/gnn/dynedge_jinst.py
++++ b/src/graphnet/models/gnn/dynedge_jinst.py
+@@ -6,7 +6,7 @@ Author: Rasmus Oersoe
+ import torch
+ from torch import Tensor
+ from torch_geometric.data import Data
+-from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_sum
++from torch_geometric.utils import scatter
+ 
+ from graphnet.models.components.edge_convolutions import DynEdgeConv
+ from graphnet.models.gnn.gnn import GNN
+@@ -122,10 +122,10 @@ class DynEdgeJINST(GNN):
+         x = self.nn2(x)
+ 
+         # Aggregation across nodes
+-        a, _ = scatter_max(x, batch, dim=0)
+-        b, _ = scatter_min(x, batch, dim=0)
+-        c = scatter_sum(x, batch, dim=0)
+-        d = scatter_mean(x, batch, dim=0)
++        a = scatter(x, batch, dim=0, reduce="max")
++        b = scatter(x, batch, dim=0, reduce="min")
++        c = scatter(x, batch, dim=0, reduce="sum")
++        d = scatter(x, batch, dim=0, reduce="mean")
+ 
+         # Concatenate aggregations and scalar features
+         x = torch.cat(
+diff --git a/src/graphnet/models/gnn/dynedge_kaggle_tito.py b/src/graphnet/models/gnn/dynedge_kaggle_tito.py
+index 3ad01e5..5ece469 100644
+--- a/src/graphnet/models/gnn/dynedge_kaggle_tito.py
++++ b/src/graphnet/models/gnn/dynedge_kaggle_tito.py
+@@ -14,17 +14,17 @@ import torch
+ from torch import Tensor, LongTensor
+ 
+ from torch_geometric.data import Data
+-from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_sum
++from torch_geometric.utils import scatter
+ 
+ from graphnet.models.components.edge_convolutions import DynTrans
+ from graphnet.models.gnn.gnn import GNN
+ from graphnet.models.utils import calculate_xyzt_homophily
+ 
+ GLOBAL_POOLINGS = {
+-    "min": scatter_min,
+-    "max": scatter_max,
+-    "sum": scatter_sum,
+-    "mean": scatter_mean,
++    "min": "min",
++    "max": "max",
++    "sum": "sum",
++    "mean": "mean",
+ }
+ 
+ 
+@@ -205,12 +205,8 @@ class DynEdgeTITO(GNN):
+         assert self._global_pooling_schemes
+         pooled = []
+         for pooling_scheme in self._global_pooling_schemes:
+-            pooling_fn = GLOBAL_POOLINGS[pooling_scheme]
+-            pooled_x = pooling_fn(x, index=batch, dim=0)
+-            if isinstance(pooled_x, tuple) and len(pooled_x) == 2:
+-                # `scatter_{min,max}`, which return also an argument, vs.
+-                # `scatter_{mean,sum}`
+-                pooled_x, _ = pooled_x
++            reduce = GLOBAL_POOLINGS[pooling_scheme]
++            pooled_x = scatter(x, index=batch, dim=0, reduce=reduce)
+             pooled.append(pooled_x)
+ 
+         return torch.cat(pooled, dim=1)
+@@ -227,7 +223,7 @@ class DynEdgeTITO(GNN):
+         h_x, h_y, h_z, h_t = calculate_xyzt_homophily(x, edge_index, batch)
+ 
+         # Calculate mean features
+-        global_means = scatter_mean(x, batch, dim=0)
++        global_means = scatter(x, batch, dim=0, reduce="mean")
+ 
+         # Add global variables
+         global_variables = torch.cat(
+diff --git a/src/graphnet/models/gnn/particlenet.py b/src/graphnet/models/gnn/particlenet.py
+index 716d348..7fffe5d 100644
+--- a/src/graphnet/models/gnn/particlenet.py
++++ b/src/graphnet/models/gnn/particlenet.py
+@@ -5,16 +5,16 @@ from typing import List, Optional, Tuple, Union
+ import torch
+ from torch import Tensor, LongTensor
+ from torch_geometric.data import Data
+-from torch_scatter import scatter_max, scatter_mean, scatter_min, scatter_sum
++from torch_geometric.utils import scatter
+ 
+ from graphnet.models.components.edge_convolutions import DynEdgeConv
+ from graphnet.models.gnn.gnn import GNN
+ 
+ GLOBAL_POOLINGS = {
+-    "min": scatter_min,
+-    "max": scatter_max,
+-    "sum": scatter_sum,
+-    "mean": scatter_mean,
++    "min": "min",
++    "max": "max",
++    "sum": "sum",
++    "mean": "mean",
+ }
+ 
+ 
+@@ -222,12 +222,8 @@ class ParticleNeT(GNN):
+         assert self._global_pooling_schemes
+         pooled = []
+         for pooling_scheme in self._global_pooling_schemes:
+-            pooling_fn = GLOBAL_POOLINGS[pooling_scheme]
+-            pooled_x = pooling_fn(x, index=batch, dim=0)
+-            if isinstance(pooled_x, tuple) and len(pooled_x) == 2:
+-                # `scatter_{min,max}`, which return also an argument, vs.
+-                # `scatter_{mean,sum}`
+-                pooled_x, _ = pooled_x
++            reduce = GLOBAL_POOLINGS[pooling_scheme]
++            pooled_x = scatter(x, index=batch, dim=0, reduce=reduce)
+             pooled.append(pooled_x)
+ 
+         return torch.cat(pooled, dim=1)
+diff --git a/src/graphnet/models/utils.py b/src/graphnet/models/utils.py
+index 06cf41f..aa97d0d 100644
+--- a/src/graphnet/models/utils.py
++++ b/src/graphnet/models/utils.py
+@@ -10,8 +10,11 @@ from torch_geometric.data import Batch, Data
+ from torch_geometric.utils import homophily, to_dense_adj
+ from torch_geometric.utils.num_nodes import maybe_num_nodes
+ 
+-from torch_scatter import scatter, scatter_add
+-from torch_sparse import SparseTensor
++from torch_geometric.utils import scatter
++# torch_sparse esta deprecado (sem wheel para versoes recentes de
++# torch/Python) e so e usado por add_full_rrwp (GRIT); import adiado pra
++# nao bloquear o modulo inteiro so por causa dessa funcao nao utilizada
++# pelo DynEdge.
+ 
+ 
+ def calculate_xyzt_homophily(
+@@ -185,6 +188,8 @@ def add_full_rrwp(
+         add_identity: Add identity matrix to position encoding.
+         spd: Use shortest path distances.
+     """
++    from torch_sparse import SparseTensor
++
+     num_nodes = data.num_nodes
+     edge_index, edge_weight = data.edge_index, data.edge_weight
+ 
