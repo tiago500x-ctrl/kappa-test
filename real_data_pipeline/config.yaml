@@ -32,7 +32,7 @@ model:
   efficiency_uncertainty: 0.10
   plasma_scale_uncertainty: 0.20
   bootstrap_samples: 500
-  null_simulations: 1000
+  null_simulations: 10000
   random_seed: 42
   energy_bins_tev: [10, 100, 1000, 1000000]
   n_jobs: null  # null = usa (numero de nucleos - 1); processos paralelos para bootstrap/calibracao nula
