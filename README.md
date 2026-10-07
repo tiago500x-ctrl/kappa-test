@@ -5,6 +5,7 @@
 Teste de razão de verossimilhança (Poisson) para uma atenuação exponencial
 de contagens de neutrinos por fonte em função de uma "coluna de plasma":
 
+
 $$\mu_i(\kappa) = \mu_{0,i}\, e^{-\kappa\, C_{p,i}}, \qquad \kappa \ge 0$$
 
 - **H0:** κ = 0 (sem atenuação)
@@ -87,12 +88,22 @@ plasma (FRB/DM) continua sem dados reais.
   para matrizes de resposta/oscilação): instala e importa com sucesso neste
   ambiente após `apt install build-essential python3-dev` — ver issue
   [#17](https://github.com/tiago500x-ctrl/kappa-test/issues/17) (fechada).
-  Avaliação de uso efetivo no pipeline ainda pendente.
+  Uso real e concreto: o `iminuit` (dependência de ajuste do PISA) substituiu
+  o `scipy.optimize` em `real_data_pipeline/src/inference.py` — resolveu uma
+  subcobertura real do IC 95% (issue [#19](https://github.com/tiago500x-ctrl/kappa-test/issues/19)).
+  O Pipeline/Stages completo (fluxo, oscilação, área efetiva) foi avaliado e
+  **rejeitado** para este projeto: exige MC verdade e tabelas oficiais do
+  IceCube que não temos.
 - **[GraphNeT](https://github.com/graphnet-team/graphnet)** (GNNs para
-  reconstrução de eventos): instalação bloqueada neste ambiente — exige
-  `numpy<2.0` (incompatível com o numpy 2.x já em uso) e um venv isolado. Ver
-  issue [#18](https://github.com/tiago500x-ctrl/kappa-test/issues/18) (aberta)
-  para o diagnóstico completo e os comandos para destravar.
+  reconstrução de eventos): instalado com sucesso em venv isolado (fora do
+  repo) com `torch==2.14.1` + `torch_geometric`, após um patch local
+  (migração de `torch_scatter`/`torch_sparse`/`pyg_lib`, deprecados e sem
+  wheel para esta combinação, para os equivalentes nativos do
+  `torch_geometric`) — **`DynEdge` roda forward pass completo**. Patch **não
+  submetido ao GraphNeT** (uso local apenas) — ver
+  `real_data_pipeline/GRAPHNET_LOCAL_PATCH.md` e issue
+  [#18](https://github.com/tiago500x-ctrl/kappa-test/issues/18) (fechada)
+  para o diff completo e as limitações.
 
 ## Licença
 
